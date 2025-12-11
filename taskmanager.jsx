@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, X, Calendar, ChevronLeft, ChevronRight, User, MoreHorizontal, Check, Pencil, FolderOpen, Sparkles, Loader2 } from 'lucide-react';
+import { Plus, X, Calendar, ChevronLeft, ChevronRight, User, MoreHorizontal, Check, Pencil, FolderOpen } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
@@ -12,35 +12,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-// --- GEMINI API UTILITIES ---
-const apiKey = ""; // API Key injected by environment
-
-async function callGemini(prompt, jsonSchema = null) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-  
-  const payload = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: jsonSchema 
-      ? { responseMimeType: "application/json", responseSchema: jsonSchema } 
-      : { responseMimeType: "text/plain" }
-  };
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text;
-  } catch (error) {
-    console.error("Gemini API Failed:", error);
-    return null;
-  }
-}
 
 // --- HELPER FUNCTIONS ---
 
@@ -148,9 +119,6 @@ const TaskForm = ({ isOpen, onClose, onSave, artists, onAddArtist, initialData }
   });
   const [newArtistName, setNewArtistName] = useState('');
   const [isAddingArtist, setIsAddingArtist] = useState(false);
-  
-  const [isEnhancing, setIsEnhancing] = useState(false);
-  const [isPlanning, setIsPlanning] = useState(false);
 
   // Initialize form when opening
   useEffect(() => {
@@ -201,30 +169,6 @@ const TaskForm = ({ isOpen, onClose, onSave, artists, onAddArtist, initialData }
   const handleRemovePhase = (idx) => {
     const newPhases = formData.phases.filter((_, i) => i !== idx);
     setFormData(prev => ({ ...prev, phases: newPhases }));
-  };
-
-  const handleAIBriefing = async () => {
-    if (!formData.briefing && !formData.taskName) return;
-    setIsEnhancing(true);
-    const prompt = `Enhance this task briefing for a creative task named "${formData.taskName}". Make it professional, actionable, and concise. Current input: "${formData.briefing || formData.taskName}"`;
-    const result = await callGemini(prompt);
-    if (result) setFormData(prev => ({ ...prev, briefing: result.trim() }));
-    setIsEnhancing(false);
-  };
-
-  const handleAIPhases = async () => {
-    if (!formData.startDate || !formData.deadline || !formData.taskName) return;
-    setIsPlanning(true);
-    const prompt = `I have a task "${formData.taskName}" from ${formData.startDate} to ${formData.deadline}. Briefing: "${formData.briefing}". Suggest a logical breakdown of 3 to 5 phases for this timeline. Return ONLY a JSON array of objects, where each object has "name" (string) and "endDate" (string YYYY-MM-DD).`;
-    const schema = { type: "ARRAY", items: { type: "OBJECT", properties: { name: { type: "STRING" }, endDate: { type: "STRING" } } } };
-    const result = await callGemini(prompt, schema);
-    if (result) {
-      try {
-        const phases = JSON.parse(result);
-        setFormData(prev => ({ ...prev, phases: phases.map(p => ({ endDate: p.endDate, name: p.name, progress: 0 })) }));
-      } catch (e) { console.error("Failed to parse AI phases", e); }
-    }
-    setIsPlanning(false);
   };
 
   const handleSubmit = () => {
@@ -334,17 +278,7 @@ const TaskForm = ({ isOpen, onClose, onSave, artists, onAddArtist, initialData }
             </div>
 
             <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="block text-xs font-bold uppercase text-gray-700">Briefing:</label>
-                <button 
-                  onClick={handleAIBriefing}
-                  disabled={isEnhancing || (!formData.briefing && !formData.taskName)}
-                  className="text-[10px] bg-white px-2 py-0.5 rounded-full text-purple-600 font-bold shadow-sm hover:bg-purple-50 disabled:opacity-50 flex items-center gap-1 transition-all"
-                >
-                  {isEnhancing ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-                  {isEnhancing ? 'Enhancing...' : 'Enhance'}
-                </button>
-              </div>
+              <label className="block text-xs font-bold uppercase text-gray-700 mb-1">Briefing:</label>
               <textarea 
                 rows={3}
                 className="w-full rounded-lg border-none p-2 shadow-sm focus:ring-2 focus:ring-pink-400 resize-none"
@@ -375,17 +309,7 @@ const TaskForm = ({ isOpen, onClose, onSave, artists, onAddArtist, initialData }
             </div>
 
             <div className="bg-white/50 p-3 rounded-lg space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="block text-xs font-bold uppercase text-gray-700">Phases:</label>
-                <button 
-                  onClick={handleAIPhases}
-                  disabled={isPlanning || !formData.startDate || !formData.deadline}
-                  className="text-[10px] bg-gradient-to-r from-purple-500 to-pink-500 text-white px-2 py-0.5 rounded-full font-bold shadow-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-1 transition-all"
-                >
-                  {isPlanning ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-                  {isPlanning ? 'Planning...' : 'Suggest Phases'}
-                </button>
-              </div>
+              <label className="block text-xs font-bold uppercase text-gray-700">Phases:</label>
               {formData.phases.map((phase, idx) => (
                 <div key={idx} className="flex gap-2 items-center group">
                   <span className="text-xs font-bold text-gray-500 w-6">{idx + 1}.</span>
@@ -817,13 +741,15 @@ export default function App() {
               {user ? 'Changes are automatically saved.' : 'Connecting to database...'}
             </p>
           </div>
-          <button 
-            onClick={() => { setEditingTask(null); setIsFormOpen(true); }}
-            className="bg-black text-white px-5 py-2.5 rounded-full font-bold shadow-lg hover:bg-gray-800 transition-all flex items-center gap-2"
-          >
-            <Plus size={20} />
-            New Task
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => { setEditingTask(null); setIsFormOpen(true); }}
+              className="bg-black text-white px-5 py-2.5 rounded-full font-bold shadow-lg hover:bg-gray-800 transition-all flex items-center gap-2"
+            >
+              <Plus size={20} />
+              New Task
+            </button>
+          </div>
         </div>
 
         <div className="h-[600px]">
